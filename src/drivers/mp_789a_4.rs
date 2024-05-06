@@ -8,12 +8,6 @@ use super::MotionControllerDriver;
 
 const WR_DLY: u64 = 50; // milliseconds
 
-fn subseq(haystack: &[u8], needle: &[u8]) -> bool {
-    haystack
-        .windows(needle.len())
-        .any(|window| window == needle)
-}
-
 pub struct Mp789a4 {
     port: Arc<Mutex<Box<dyn SerialPort>>>,
     recv: [u8; 32],
@@ -39,9 +33,9 @@ impl Mp789a4 {
         let recv = &mut [0; 32];
 
         // Request identification.
-        port.write(b" \r")?;
-        port.read(recv)?;
-        match &recv[..] {
+        port.write_all(b" \r")?;
+        let sz = port.read(recv)?;
+        match &recv[..sz] {
             b" v2.55\r\n#\r\n" => {
                 // Handle case when response is " v2.55\r\n#\r\n"
                 log::info!("Uninitialized MP789A4 detected.");
@@ -309,15 +303,23 @@ impl MotionControllerDriver for Mp789a4 {
         }
 
         // Finally, ask the device if its moving.
-        for i in 0..3 {
-            self.write_read(b"^\r")?;
-            if self.recv_contains(b"0") && !self.recv_contains(b"+") && !self.recv_contains(b"-") {
-                self.moving = false;
-                return Ok(false);
-            } else {
-                self.moving = true;
-                return Ok(true);
-            }
+        // for i in 0..3 {
+        //     self.write_read(b"^\r")?;
+        //     if self.recv_contains(b"0") && !self.recv_contains(b"+") && !self.recv_contains(b"-") {
+        //         self.moving = false;
+        //         return Ok(false);
+        //     } else {
+        //         self.moving = true;
+        //         return Ok(true);
+        //     }
+        // }
+        self.write_read(b"^\r")?;
+        if self.recv_contains(b"0") && !self.recv_contains(b"+") && !self.recv_contains(b"-") {
+            self.moving = false;
+            return Ok(false);
+        } else {
+            self.moving = true;
+            return Ok(true);
         }
 
         // If we cannot determine if the device is moving, assume it is.
