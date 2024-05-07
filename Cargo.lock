@@ -1844,6 +1844,7 @@ dependencies = [
  "env_logger",
  "image",
  "log",
+ "rand",
  "serde",
  "serialport",
  "wasm-bindgen-futures",

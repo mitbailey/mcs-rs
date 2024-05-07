@@ -18,6 +18,8 @@ use egui_dock::{DockArea, DockState, NodeIndex, TabViewer};
 pub mod drivers;
 pub mod middleware;
 use middleware::{MotionController, MovementAxesIndices, Detector};
+
+use rand::prelude::*;
 // pub use crate::middleware::{MovementAxes, MotionController, Detector};
 
 // use eframe::NativeOptions;
@@ -134,6 +136,8 @@ struct McsTabs {
     samp_scan_end: f32,
     samp_scan_step: f32,
     samp_scan_repeats: u32,
+
+    detector_data: Vec<Vec<f64>>, // Outer vec is per-detector, inner vec is per-scan data.
 }
 
 impl egui_dock::TabViewer for McsTabs {
@@ -253,13 +257,55 @@ impl McsTabs {
         });
     }
 
-    fn data_plot(&mut self, ui: &mut egui::Ui) {
-        self.example_plot(ui);
+    // TODO: Make a data_record function.
 
+    fn data_plot(&mut self, ui: &mut egui::Ui) {
+        use egui_plot::{Line, PlotPoints};
+        let n = 128;
+        
+        let line = Line::new(
+            (0..=n)
+                .map(|i| {
+                    use std::f64::consts::TAU;
+                    let x = egui::remap(i as f64, 0.0..=n as f64, -TAU..=TAU);
+                    [x, 10.0 * gaussian(x)]
+                })
+                .collect::<PlotPoints>(),
+        );
+        
+        let mut plot = egui_plot::Plot::new("test_plot")
+            .legend(egui_plot::Legend::default())
+            .y_axis_label("Photocurrent [pA]")
+            .x_axis_label("Wavelength [nm]");
+
+        plot.show(ui, |plot_ui| {
+            for i in 0..self.detector_data.len() {
+                // TODO: Some sort of show/dont show condition.
+
+                plot_ui.line(Line::new(
+                    self.detector_data[i]
+                        .iter()
+                        .enumerate()
+                        .map(|(i, &y)| [i as f64, y])
+                        .collect::<PlotPoints>(),
+                ));
+
+                // Line::new(self.detector_data)
+                // plot_ui.line(&line);
+            }
+        });
+
+        // TODO: Have this button also push to the data record as well.
+        // TODO: Remove (test for the plot).
+        // TEST: Button that generates random data one float at a time.
         ui.vertical(|ui| {
-            ui.heading("Buttons");
-            Button::new("Click me!").ui(ui);
-            Button::new("Click me too!").ui(ui);
+            if ui.button("Generate Random Datapoint").clicked() {
+                for i in 0..self.detector_data.len() {
+                    self.detector_data[i].push(rand::random::<f64>());
+                    // TODO: Repaint done when scan is active... use scan_active bool or something.
+                    ui.ctx().request_repaint();
+                }
+            }
         });
     }
 
@@ -295,8 +341,11 @@ struct Mcs {
     det_models: Vec<String>, // Supported models
 
     first_time: bool,
-    conn_mtn_ctrlrs: Vec<MotionController>,
+    connd_mtn_ctrlrs: Vec<MotionController>,
+    connd_detectors: Vec<Detector>,
     mai: MovementAxesIndices,
+
+
 }
 
 impl Default for Mcs {
@@ -345,11 +394,11 @@ impl Default for Mcs {
             samp_scan_end: 0.0,
             samp_scan_step: 0.0,
             samp_scan_repeats: 0,
+
+            detector_data: Vec::new(),
         };
 
         Self {
-            // name: "Arthur".to_owned(),
-            // age: 42,
             // ports: String::new(),
             devs_setup: false,
             dark_mode: false,
@@ -366,13 +415,16 @@ impl Default for Mcs {
 
             tabs,
             tree,
-
+            
             mtn_ctrl_models: vec!["MC1".to_owned(), "MC2".to_owned(), "MC3".to_owned()],
             det_models: vec!["De1".to_owned(), "De2".to_owned(), "De3".to_owned()],
 
             first_time: true,
-            conn_mtn_ctrlrs: Vec::new(),
+            connd_mtn_ctrlrs: Vec::new(),
+            connd_detectors: Vec::new(),
             mai: MovementAxesIndices::new(),
+
+
         }
     }
 }
@@ -447,35 +499,6 @@ fn gaussian(x: f64) -> f64 {
 }
 
 impl McsTabs {
-    fn example_plot(&self, ui: &mut egui::Ui) -> egui::Response {
-        use egui_plot::{Line, PlotPoints};
-        let n = 128;
-        let line = Line::new(
-            (0..=n)
-                .map(|i| {
-                    use std::f64::consts::TAU;
-                    let x = egui::remap(i as f64, 0.0..=n as f64, -TAU..=TAU);
-                    [x, 10.0 * gaussian(x)]
-                })
-                .collect::<PlotPoints>(),
-        );
-        egui_plot::Plot::new("example_plot")
-            // .show_axes(self.show_axes)
-            // .allow_drag(self.allow_drag)
-            // .allow_zoom(self.allow_zoom)
-            // .allow_scroll(self.allow_scroll)
-            // .center_x_axis(self.center_x_axis)
-            // .center_x_axis(self.center_y_axis)
-            // .width(self.width)
-            // .height(self.height)
-            .y_axis_label("Power")
-            .x_axis_label("Wavelength [nm]")
-            // .view_aspect(1.0)
-            // .data_aspect(1.0)
-            .show(ui, |plot_ui| plot_ui.line(line))
-            .response
-    }
-
     fn nested_menus(ui: &mut egui::Ui) {
         if ui.button("Open...").clicked() {
             ui.close_menu();
@@ -522,21 +545,21 @@ impl eframe::App for Mcs {
             let mc2 = MotionController::new(22);
             let mc3 = MotionController::new(33);
 
-            self.conn_mtn_ctrlrs.push(mc1);
-            self.conn_mtn_ctrlrs.push(mc2);
-            self.conn_mtn_ctrlrs.push(mc3);
+            self.connd_mtn_ctrlrs.push(mc1);
+            self.connd_mtn_ctrlrs.push(mc2);
+            self.connd_mtn_ctrlrs.push(mc3);
 
             self.mai.md_idx = Some(0);
             
-            println!("ID: {}", self.conn_mtn_ctrlrs[self.mai.md_idx.expect("No idx.")].id);
+            println!("ID: {}", self.connd_mtn_ctrlrs[self.mai.md_idx.expect("No idx.")].id);
 
             self.mai.md_idx = Some(1);
 
-            println!("ID: {}", self.conn_mtn_ctrlrs[self.mai.md_idx.expect("No idx.")].id);
+            println!("ID: {}", self.connd_mtn_ctrlrs[self.mai.md_idx.expect("No idx.")].id);
 
             self.mai.md_idx = Some(2);
 
-            println!("ID: {}", self.conn_mtn_ctrlrs[self.mai.md_idx.expect("No idx.")].id);
+            println!("ID: {}", self.connd_mtn_ctrlrs[self.mai.md_idx.expect("No idx.")].id);
 
             self.first_time = false;
         }
@@ -726,6 +749,10 @@ impl eframe::App for Mcs {
 
                     ///////////
 
+                    if ui.button("Search for Devices").clicked() {
+                        self.search_ports = true;
+                    }
+
                     ui.label("Motion Controllers");
                     // This spinbox will determine how many motion controller entries we need.
                     // ui.add(egui::DragValue::new(&mut self.tabs.num_mc_devs)
@@ -735,15 +762,15 @@ impl eframe::App for Mcs {
                     ui.add(egui::Slider::new(&mut self.tabs.num_mc_devs, 1..=10));
                     
                     for i in 0..self.tabs.num_mc_devs {
-                        if self.tabs.sel_mc_port.len() < i + 1 as usize {
+                        if self.tabs.sel_mc_port.len() < i + 1 {
                             self.tabs.sel_mc_port.push("None".to_owned());
                         }
 
-                        if self.tabs.sel_mc_model.len() < i + 1 as usize {
+                        if self.tabs.sel_mc_model.len() < i + 1 {
                             self.tabs.sel_mc_model.push("None".to_owned());
                         }
 
-                        if self.tabs.sel_mc_nick.len() < i + 1 as usize {
+                        if self.tabs.sel_mc_nick.len() < i + 1 {
                             self.tabs.sel_mc_nick.push("None".to_owned());
                         }
 
@@ -806,15 +833,15 @@ impl eframe::App for Mcs {
                     ui.add(egui::Slider::new(&mut self.tabs.num_det_devs, 1..=2));
                     
                     for i in 0..self.tabs.num_det_devs {
-                        if self.tabs.sel_det_port.len() < i + 1 as usize {
+                        if self.tabs.sel_det_port.len() < i + 1 {
                             self.tabs.sel_det_port.push("None".to_owned());
                         }
 
-                        if self.tabs.sel_det_model.len() < i + 1 as usize {
+                        if self.tabs.sel_det_model.len() < i + 1 {
                             self.tabs.sel_det_model.push("None".to_owned());
                         }
 
-                        if self.tabs.sel_det_nick.len() < i + 1 as usize {
+                        if self.tabs.sel_det_nick.len() < i + 1 {
                             self.tabs.sel_det_nick.push("None".to_owned());
                         }
 
@@ -876,6 +903,20 @@ impl eframe::App for Mcs {
                     {
                         self.devices_loading = true;
                         self.devices_loading_progress = 0.0;
+
+                        // Set up the devices vectors.
+                        for i in 0..self.tabs.num_mc_devs {
+                            let mc = MotionController::new(i);
+                            self.connd_mtn_ctrlrs.push(mc);
+                        }
+
+                        for i in 0..self.tabs.num_det_devs {
+                            let det = Detector::new(i);
+                            self.connd_detectors.push(det);
+
+                            // Make a new vec for each detector.
+                            self.tabs.detector_data.push(Vec::new());
+                        }
                     }
 
                     if self.devices_loading {

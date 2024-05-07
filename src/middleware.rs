@@ -25,13 +25,13 @@ impl MovementAxesIndices {
 }
 
 pub struct MotionController {
-    pub id: i32,
+    pub id: usize,
 }
 
 impl MotionController {
-    pub fn new(id: i32) -> MotionController {
+    pub fn new(id: usize) -> MotionController {
         MotionController {
-            id: id,
+            id,
         }
     }
 
@@ -64,7 +64,7 @@ pub struct Detector {
 }
 
 impl Detector {
-    pub fn new(id: i32) -> Detector {
+    pub fn new(id: usize) -> Detector {
         Detector {
         }
     }
