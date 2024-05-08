@@ -20,6 +20,8 @@ pub mod middleware;
 use middleware::{MotionController, MovementAxesIndices, Detector};
 
 use rand::prelude::*;
+
+use crate::middleware::DetectorMiddleware;
 // pub use crate::middleware::{MovementAxes, MotionController, Detector};
 
 // use eframe::NativeOptions;
@@ -138,6 +140,8 @@ struct McsTabs {
     samp_scan_repeats: u32,
 
     detector_data: Vec<Vec<f64>>, // Outer vec is per-detector, inner vec is per-scan data.
+
+    connd_detectors: Vec<Detector>,
 }
 
 impl egui_dock::TabViewer for McsTabs {
@@ -301,7 +305,7 @@ impl McsTabs {
         ui.vertical(|ui| {
             if ui.button("Generate Random Datapoint").clicked() {
                 for i in 0..self.detector_data.len() {
-                    self.detector_data[i].push(rand::random::<f64>());
+                    self.detector_data[i].push(self.connd_detectors[i].detect());
                     // TODO: Repaint done when scan is active... use scan_active bool or something.
                     ui.ctx().request_repaint();
                 }
@@ -342,7 +346,7 @@ struct Mcs {
 
     first_time: bool,
     connd_mtn_ctrlrs: Vec<MotionController>,
-    connd_detectors: Vec<Detector>,
+
     mai: MovementAxesIndices,
 
 
@@ -396,6 +400,8 @@ impl Default for Mcs {
             samp_scan_repeats: 0,
 
             detector_data: Vec::new(),
+
+            connd_detectors: Vec::new(),
         };
 
         Self {
@@ -421,8 +427,8 @@ impl Default for Mcs {
 
             first_time: true,
             connd_mtn_ctrlrs: Vec::new(),
-            connd_detectors: Vec::new(),
-            mai: MovementAxesIndices::new(),
+            // connd_detectors: Vec::new(),
+            mai: MovementAxesIndices::default(),
 
 
         }
@@ -539,30 +545,34 @@ impl eframe::App for Mcs {
         ctx.set_pixels_per_point(1.5);
 
 
-        // Test of the MotionController indexing system.
-        if self.first_time {
-            let mc1 = MotionController::new(11);
-            let mc2 = MotionController::new(22);
-            let mc3 = MotionController::new(33);
+        // // Test of the MotionController indexing system.
+        // if self.first_time {
+        //     let mc1 = MotionController::new(11, Box::new(drivers::mp_789a_4::Mp789a4::new("COM1".to_string()).unwrap()));
+        //     // let mc2 = MotionController::new(22);
+        //     // let mc3 = MotionController::new(33);
 
-            self.connd_mtn_ctrlrs.push(mc1);
-            self.connd_mtn_ctrlrs.push(mc2);
-            self.connd_mtn_ctrlrs.push(mc3);
+        //     self.connd_mtn_ctrlrs.push(mc1);
+        //     // self.connd_mtn_ctrlrs.push(mc2);
+        //     // self.connd_mtn_ctrlrs.push(mc3);
 
-            self.mai.md_idx = Some(0);
+        //     let dt1 = Detector::new(1, Box::new(drivers::ki_6485::Ki6485::new("COM2".to_string(), 10)));
             
-            println!("ID: {}", self.connd_mtn_ctrlrs[self.mai.md_idx.expect("No idx.")].id);
+        //     self.connd_detectors.push(dt1);
 
-            self.mai.md_idx = Some(1);
+        //     self.mai.md_idx = Some(0);
 
-            println!("ID: {}", self.connd_mtn_ctrlrs[self.mai.md_idx.expect("No idx.")].id);
+        //     println!("ID: {}", self.connd_mtn_ctrlrs[self.mai.md_idx.expect("No idx.")].id);
 
-            self.mai.md_idx = Some(2);
+        //     // self.mai.md_idx = Some(1);
 
-            println!("ID: {}", self.connd_mtn_ctrlrs[self.mai.md_idx.expect("No idx.")].id);
+        //     // println!("ID: {}", self.connd_mtn_ctrlrs[self.mai.md_idx.expect("No idx.")].id);
 
-            self.first_time = false;
-        }
+        //     // self.mai.md_idx = Some(2);
+
+        //     // println!("ID: {}", self.connd_mtn_ctrlrs[self.mai.md_idx.expect("No idx.")].id);
+
+        //     self.first_time = false;
+        // }
 
         //////////////////////////////////////////////////////////////
         // All possible modal window popups should be handled here. //
@@ -901,18 +911,19 @@ impl eframe::App for Mcs {
                         .on_hover_text("Search for and connect devices as selected above.")
                         .clicked()
                     {
+                        // TODO: Obviously this closure is mostly test code- requires extensive overhaul!!!
                         self.devices_loading = true;
                         self.devices_loading_progress = 0.0;
 
                         // Set up the devices vectors.
                         for i in 0..self.tabs.num_mc_devs {
-                            let mc = MotionController::new(i);
+                            let mc = MotionController::new(i, Box::new(drivers::mp_789a_4::Mp789a4Virtual::new(self.tabs.sel_mc_port[i].clone()).unwrap()));
                             self.connd_mtn_ctrlrs.push(mc);
                         }
 
                         for i in 0..self.tabs.num_det_devs {
-                            let det = Detector::new(i);
-                            self.connd_detectors.push(det);
+                            let det = Detector::new(i, Box::new(drivers::ki_6485::Ki6485::new(self.tabs.sel_det_port[i].clone(), 10)));
+                            self.tabs.connd_detectors.push(det);
 
                             // Make a new vec for each detector.
                             self.tabs.detector_data.push(Vec::new());
