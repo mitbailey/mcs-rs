@@ -2,29 +2,22 @@
 #![allow(rustdoc::missing_crate_level_docs)] // it's an example
 
 use std::any::Any;
-use std::iter::Enumerate;
 use std::vec;
 
 use eframe::egui;
-use eframe::egui::{Style, Visuals};
-use egui::{menu, Button};
+use eframe::egui::{Visuals, Margin};
+use egui::menu;
 use egui::{Frame, Widget};
-use serde::de::value::Error;
 use serialport::SerialPortInfo;
-
-use egui::{Margin, Ui, Vec2, WidgetText};
-use egui_dock::{DockArea, DockState, NodeIndex, TabViewer};
+use egui_dock::{DockArea, DockState, NodeIndex};
 
 pub mod drivers;
 pub mod middleware;
 use middleware::{MotionController, MovementAxesIndices, Detector};
 
-use rand::prelude::*;
+// use rand::prelude::*;
 
 use crate::middleware::DetectorMiddleware;
-// pub use crate::middleware::{MovementAxes, MotionController, Detector};
-
-// use eframe::NativeOptions;
 
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
@@ -173,7 +166,7 @@ impl McsTabs {
                     ui.label("Position [nm]");
                     ui.add(egui::DragValue::new(&mut self.pos_target).speed(0.1));
                     ui.button("Move");
-                    ui.label(format!("{} nm", self.pos_curr.to_string()));
+                    ui.label(format!("{} nm", self.pos_curr));
                 });
 
                 ui.separator();
@@ -208,21 +201,21 @@ impl McsTabs {
                     ui.label("Rotation [deg]");
                     ui.add(egui::DragValue::new(&mut self.samp_rot_target).speed(0.1));
                     ui.button("Move");
-                    ui.label(format!("{} deg", self.samp_rot_curr.to_string()));
+                    ui.label(format!("{} deg", self.samp_rot_curr));
                 });
                 ui.horizontal(|ui| {
                     ui.button("Home");
                     ui.label("Angle [deg]");
                     ui.add(egui::DragValue::new(&mut self.samp_ang_target).speed(0.1));
                     ui.button("Move");
-                    ui.label(format!("{} deg", self.samp_ang_curr.to_string()));
+                    ui.label(format!("{} deg", self.samp_ang_curr));
                 });
                 ui.horizontal(|ui| {
                     ui.button("Home");
                     ui.label("Translation [nm]");
                     ui.add(egui::DragValue::new(&mut self.samp_tran_target).speed(0.1));
                     ui.button("Move");
-                    ui.label(format!("{} nm", self.samp_tran_curr.to_string()));
+                    ui.label(format!("{} nm", self.samp_tran_curr));
                 });
 
                 ui.label("Scanning Control");
@@ -277,7 +270,7 @@ impl McsTabs {
                 .collect::<PlotPoints>(),
         );
         
-        let mut plot = egui_plot::Plot::new("test_plot")
+        let plot = egui_plot::Plot::new("test_plot")
             .legend(egui_plot::Legend::default())
             .y_axis_label("Photocurrent [pA]")
             .x_axis_label("Wavelength [nm]");
@@ -722,7 +715,7 @@ impl eframe::App for Mcs {
                         .ui(ui)
                         .clicked()
                         {
-                            self.dialog(DialogType::Warn, &format!("Devices have not been setup!"));
+                            self.dialog(DialogType::Warn, "Devices have not been setup!");
                             println!("Devices are not setup.")
                         }
                         
@@ -733,7 +726,7 @@ impl eframe::App for Mcs {
                         .ui(ui)
                         .clicked()
                         {
-                            self.dialog(DialogType::Warn, &format!("Devices have not been setup!"));
+                            self.dialog(DialogType::Warn, "Devices have not been setup!");
                             println!("Devices are not setup.")
                         }
                     }
@@ -917,12 +910,12 @@ impl eframe::App for Mcs {
 
                         // Set up the devices vectors.
                         for i in 0..self.tabs.num_mc_devs {
-                            let mc = MotionController::new(i, Box::new(drivers::mp_789a_4::Mp789a4Virtual::new(self.tabs.sel_mc_port[i].clone()).unwrap()));
+                            let mc = MotionController::new(Box::new(drivers::mp_789a_4::Mp789a4Virtual::new(self.tabs.sel_mc_port[i].clone()).unwrap()));
                             self.connd_mtn_ctrlrs.push(mc);
                         }
 
                         for i in 0..self.tabs.num_det_devs {
-                            let det = Detector::new(i, Box::new(drivers::ki_6485::Ki6485::new(self.tabs.sel_det_port[i].clone(), 10)));
+                            let det = Detector::new(Box::new(drivers::ki_6485::Ki6485::new(self.tabs.sel_det_port[i].clone(), 10).unwrap()));
                             self.tabs.connd_detectors.push(det);
 
                             // Make a new vec for each detector.

@@ -45,14 +45,12 @@ pub trait MotionControlMiddleware {
 }
 
 pub struct MotionController {
-    pub id: usize,
     pub driver: Box<dyn drivers::MotionControlDriver>,
 }
 
 impl MotionController {
-    pub fn new(id: usize, driver: Box<dyn drivers::MotionControlDriver>) -> MotionController {
+    pub fn new(driver: Box<dyn drivers::MotionControlDriver>) -> MotionController {
         MotionController {
-            id,
             driver,
         }
     }
@@ -121,28 +119,46 @@ impl MotionControlMiddleware for MotionController {
 }
 
 pub trait DetectorMiddleware {
+    fn new_scan(&mut self);
+    fn get_last_scan(&self) -> Vec<f64>;
     fn detect(&mut self) -> f64;
     fn short_name(&mut self);
     fn long_name(&mut self);
 }
 
 pub struct Detector {
-    pub id: usize,
     pub driver: Box<dyn drivers::DetectorDriver>,
+    
+    scans: Vec<Vec<f64>>,
 }
 
 impl Detector {
-    pub fn new(id: usize, driver: Box<dyn drivers::DetectorDriver>) -> Detector {
+    pub fn new(driver: Box<dyn drivers::DetectorDriver>) -> Detector {
         Detector {
-            id,
             driver,
+            scans: Vec::new(),
         }
     }
 }
 
 impl DetectorMiddleware for Detector {
+    /// Detector data is always appended to the latest vector in scans.
+    /// This function creates a new empty scan vector for following data.
+    fn new_scan(&mut self) {
+        self.scans.push(Vec::new());
+    }
+
+    fn get_last_scan(&self) -> Vec<f64> {
+        self.scans.last().unwrap().to_owned()
+    }
+
     fn detect(&mut self) -> f64 {
-        self.driver.detect()
+        let data = self.driver.detect();
+
+        // Put the data into the last vector in the vector of vectors.
+        let retval = data.clone().unwrap();
+        self.scans.last_mut().unwrap().push(data.unwrap());
+        retval
     }
 
     fn short_name(&mut self) {

@@ -20,5 +20,12 @@ pub trait MotionControlDriver {
 // move_relative is not included in the trait bc the user only ever wants to move to an absolute position, and some controllers have absolute position commands directly. Some do not - only those must implement a relative move function.
 
 pub trait DetectorDriver {
-    fn detect(&mut self) -> f64;
+    fn detect(&mut self) -> Result<f64, serialport::Error>;
+    fn short_name(&mut self) -> String;
+    fn long_name(&mut self) -> String;
 }
+
+// pub struct device
+// impl device              <-- Public functions.
+// impl device              <-- Private functions.
+// impl driver for device   <-- Public interface.

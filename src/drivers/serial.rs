@@ -4,6 +4,8 @@ use std::sync::{Arc, Mutex};
 use std::thread::sleep;
 use std::time::Duration;
 
+const TIMEOUT: u64 = 50;
+
 pub struct Serial {
     port: Arc<Mutex<Box<dyn SerialPort>>>,
     recv: [u8; 32],
@@ -13,7 +15,7 @@ pub struct Serial {
 impl Serial {
     pub fn new(port_name: String, write_delay: u64) -> Result<Serial, serialport::Error> {
         let port = serialport::new(port_name, 9600)
-            .timeout(Duration::from_millis(100))
+            .timeout(Duration::from_millis(TIMEOUT))
             .open()?;
 
         // let recv = &mut [0; 32];
@@ -33,28 +35,28 @@ impl Serial {
         self.recv
     }
 
-    pub fn write(&mut self, buf: &[u8]) -> Result<(), serialport::Error> {
+    pub fn _write(&mut self, buf: &[u8]) -> Result<(), serialport::Error> {
         log::info!("Writing: {:?}", buf);
         let retval = Ok(self.port.lock().unwrap().write_all(buf)?);
         sleep(Duration::from_millis(self.write_delay));
         retval
     }
 
-    pub fn write_sleep(&mut self, buf: &[u8], sleep_time: u64) -> Result<(), serialport::Error> {
+    pub fn xfer_sleep(&mut self, buf: &[u8], sleep_time: u64) -> Result<(), serialport::Error> {
         log::info!("Writing: {:?}", buf);
         let retval = Ok(self.port.lock().unwrap().write_all(buf)?);
         sleep(Duration::from_millis(sleep_time));
         retval
     }
 
-    pub fn read(&mut self) -> Result<usize, serialport::Error> {
+    pub fn _read(&mut self) -> Result<usize, serialport::Error> {
         let retval = self.port.lock().unwrap().read(&mut self.recv)?;
         log::info!("Read: {:?}", self.recv);
         Ok(retval)
     }
 
-    pub fn write_read(&mut self, buf: &[u8]) -> Result<usize, serialport::Error> {
-        self.write(buf)?;
-        self.read()
+    pub fn xfer(&mut self, buf: &[u8]) -> Result<usize, serialport::Error> {
+        self._write(buf)?;
+        self._read()
     }
 }

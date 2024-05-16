@@ -5,42 +5,50 @@ use super::MotionControlDriver;
 use crate::drivers::serial::Serial;
 
 const WR_DLY: u64 = 50; // milliseconds
+const SHORT_NAME: &str = "MP 789A-4";
+const LONG_NAME: &str = "McPherson 789A-4";
 
 pub struct Mp789a4 {
     comms: Serial,
     position: i64,
-    long_name: String,
-    short_name: String,
     moving: bool,
     homing: bool,
 }
 
+// Public functions.
 impl Mp789a4 {
     pub fn new(port_name: String) -> Result<Mp789a4, serialport::Error> {
-        log::info!("Attempting to connect to MP789A4 at port {}.", port_name);
+        log::info!(
+            "Attempting to connect to {} at port {}.",
+            SHORT_NAME,
+            port_name
+        );
 
         // Initialize port communications.
         let mut comms = Serial::new(port_name.clone(), WR_DLY)?;
 
         // Request identification.
-        comms.write_read(b" \r")?;
+        comms.xfer(b" \r")?;
 
         if comms.recv_contains(b" v2.55\r\n#\r\n") {
-            log::info!("Uninitialized MP789A4 detected.");
+            log::info!(
+                "Uninitialized {} on port {} detected.",
+                SHORT_NAME,
+                port_name
+            );
         } else if comms.recv_contains(b" #\r\n") {
-            log::info!("Initialized MP789A4 detected.");
+            log::info!("Initialized {} on port {} detected.", SHORT_NAME, port_name);
         } else {
+            log::error!("Failed to connect to {} at port {}.", SHORT_NAME, port_name);
             return Err(serialport::Error::new(
-                serialport::ErrorKind::InvalidInput,
-                "Invalid response from device.",
+                serialport::ErrorKind::NoDevice,
+                "Failed to connect to device.",
             ));
         }
 
         let mut dev = Mp789a4 {
             comms,
             position: 0,
-            long_name: "McPherson 789A-4".to_string(),
-            short_name: "MP789A4".to_string(),
             moving: false,
             homing: false,
         };
@@ -53,13 +61,13 @@ impl Mp789a4 {
     fn move_relative(&mut self, steps: i64) -> Result<(), serialport::Error> {
         match steps.cmp(&0) {
             std::cmp::Ordering::Less => {
-                self.comms.write(format!("-{}\r", -steps).as_bytes())?;
+                self.comms.xfer(format!("-{}\r", -steps).as_bytes())?;
             }
             std::cmp::Ordering::Equal => {
                 log::warn!("No movement requested.");
             }
             std::cmp::Ordering::Greater => {
-                self.comms.write(format!("+{}\r", steps).as_bytes())?;
+                self.comms.xfer(format!("+{}\r", steps).as_bytes())?;
             }
         }
 
@@ -74,15 +82,18 @@ impl Mp789a4 {
 
         Ok(())
     }
+}
 
+// Private functions.
+impl Mp789a4 {
     fn _home(&mut self) -> Result<(), serialport::Error> {
         log::info!("Homing MP789A4.");
 
         // Enable the 789A-4's homing circuit.
-        self.comms.write_read(b"A1\r")?;
+        self.comms.xfer(b"A1\r")?;
 
         // Check limit switch status.
-        self.comms.write_read(b"]\r")?;
+        self.comms.xfer(b"]\r")?;
 
         // Carries out the 789A-4 homing algorithm as described in the manual.
         if self.comms.recv_contains(b"32")
@@ -92,11 +103,11 @@ impl Mp789a4 {
 
             // Home switch blocked.
             // Move at constant velocity (23 kHz).
-            self.comms.write(b"M+23000\r")?;
+            self.comms.xfer(b"M+23000\r")?;
 
             loop {
                 // Check limit status every 0.8 seconds.
-                self.comms.write_read(b"]\r")?;
+                self.comms.xfer(b"]\r")?;
 
                 if (self.comms.recv_contains(b"0") || self.comms.recv_contains(b"2"))
                     && (!self.comms.recv_contains(b"+") && !self.comms.recv_contains(b"-"))
@@ -121,30 +132,30 @@ impl Mp789a4 {
             }
 
             // Soft stop when homing flag is located.
-            self.comms.write(b"@\r")?;
+            self.comms.xfer(b"@\r")?;
 
             // Back into home switch 3 motor revolutions.
-            self.comms.write(b"-108000\r")?;
+            self.comms.xfer(b"-108000\r")?;
             // Go 2 motor revolutions up.
-            self.comms.write(b"+72000\r")?;
+            self.comms.xfer(b"+72000\r")?;
             // Enable 'high accuracy' circuit.
-            self.comms.write(b"A24\r")?;
+            self.comms.xfer(b"A24\r")?;
 
             // Find edge of home flag at 1000 steps/sec.
-            self.comms.write_sleep(b"F1000,0\r", WR_DLY * 7)?;
+            self.comms.xfer_sleep(b"F1000,0\r", WR_DLY * 7)?;
 
             // Disable home circuit.
-            self.comms.write(b"A0\r")?;
+            self.comms.xfer(b"A0\r")?;
         } else if self.comms.recv_contains(b"0")
             && (!self.comms.recv_contains(b"+") && !self.comms.recv_contains(b"-"))
         {
             // Home switch not blocked.
             // Move at constant velocity (23 kHz).
-            self.comms.write(b"M-23000\r")?;
+            self.comms.xfer(b"M-23000\r")?;
 
             loop {
                 // Check limit status every 0.8 seconds.
-                self.comms.write_read(b"]\r")?;
+                self.comms.xfer(b"]\r")?;
 
                 if (self.comms.recv_contains(b"32") || self.comms.recv_contains(b"34"))
                     && (!self.comms.recv_contains(b"+") && !self.comms.recv_contains(b"-"))
@@ -170,20 +181,20 @@ impl Mp789a4 {
             }
 
             // Soft stop when homing flag is located.
-            self.comms.write(b"@\r")?;
+            self.comms.xfer(b"@\r")?;
 
             // Back into home switch 3 motor revolutions.
-            self.comms.write(b"-108000\r")?;
+            self.comms.xfer(b"-108000\r")?;
             // Go 2 motor revolutions up.
-            self.comms.write(b"+72000\r")?;
+            self.comms.xfer(b"+72000\r")?;
             // Enable 'high accuracy' circuit.
-            self.comms.write(b"A24\r")?;
+            self.comms.xfer(b"A24\r")?;
 
             // Find edge of home flag at 1000 steps/sec.
-            self.comms.write_sleep(b"F1000,0\r", WR_DLY * 7)?;
+            self.comms.xfer_sleep(b"F1000,0\r", WR_DLY * 7)?;
 
             // Disable home circuit.
-            self.comms.write(b"A0\r")?;
+            self.comms.xfer(b"A0\r")?;
         } else {
             log::error!("Unknown position to home from: {:?}", self.comms.get_recv());
             return Err(serialport::Error::new(
@@ -196,7 +207,7 @@ impl Mp789a4 {
         // It is up to the middleware to handle zero- and home-offsets.
         if self.is_moving()? {
             log::warn!("Post-home movement detected. Entering movement remediation.");
-            self.comms.write_sleep(b"@\r", WR_DLY * 10)?;
+            self.comms.xfer_sleep(b"@\r", WR_DLY * 10)?;
         }
 
         let mut stop_attempts = 0;
@@ -204,7 +215,7 @@ impl Mp789a4 {
             if stop_attempts > 3 {
                 stop_attempts = 1;
                 log::warn!("Re-commanding that device ceases movement.");
-                self.comms.write(b"@\r")?;
+                self.comms.xfer(b"@\r")?;
             }
             stop_attempts += 1;
             log::warn!("Waiting for device to cease movement.");
@@ -236,6 +247,7 @@ impl Mp789a4 {
     }
 }
 
+// Public interface.
 impl MotionControlDriver for Mp789a4 {
     fn home(&mut self) -> Result<(), serialport::Error> {
         self.homing = true;
@@ -259,9 +271,9 @@ impl MotionControlDriver for Mp789a4 {
 
     fn stop(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         log::info!("Stopping {}.", self.short_name());
-        self.comms.write(b"@\r")?;
-        self.comms.write(b"@\r")?;
-        self.comms.write(b"@\r")?;
+        self.comms.xfer(b"@\r")?;
+        self.comms.xfer(b"@\r")?;
+        self.comms.xfer(b"@\r")?;
 
         Ok(())
     }
@@ -275,7 +287,7 @@ impl MotionControlDriver for Mp789a4 {
         }
 
         // Finally, ask the device if its moving.
-        self.comms.write_read(b"^\r")?;
+        self.comms.xfer(b"^\r")?;
         if self.comms.recv_contains(b"0")
             && !self.comms.recv_contains(b"+")
             && !self.comms.recv_contains(b"-")
@@ -315,13 +327,18 @@ impl MotionControlDriver for Mp789a4 {
     }
 
     fn short_name(&mut self) -> String {
-        self.short_name.clone()
+        SHORT_NAME.to_string()
     }
 
     fn long_name(&mut self) -> String {
-        self.long_name.clone()
+        LONG_NAME.to_string()
     }
 }
+
+//
+// Virtual Device
+//
+//
 
 pub struct Mp789a4Virtual {
     position: i64,
@@ -382,10 +399,10 @@ impl MotionControlDriver for Mp789a4Virtual {
     }
 
     fn short_name(&mut self) -> String {
-        self.short_name.clone()
+        SHORT_NAME.to_string()
     }
 
     fn long_name(&mut self) -> String {
-        self.long_name.clone()
+        LONG_NAME.to_string()
     }
 }
